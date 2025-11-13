@@ -33,3 +33,42 @@ sequenceDiagram
     end
     Pool-->>User: Final output tokens
 ```
+
+## Pool Swap Flow
+
+`Pool.swap` settles a single hop for the Router by paying out requested tokens, collecting the caller’s input, skimming protocol fees, and synchronizing reserves for invariant enforcement.【F:contracts/Pool.sol†L344-L377】
+
+1. The pool checks the factory-wide pause flag and ensures the requested output amounts do not exceed reserves before caching current balances.【F:contracts/Pool.sol†L345-L352】
+2. It verifies the recipient is not either pool token, optimistically transfers `amount0Out`/`amount1Out`, optionally executes a `hook` callback for flash-loan style operations, and measures its post-transfer balances.【F:contracts/Pool.sol†L353-L361】
+3. Incoming liquidity is inferred from the balance delta relative to the prior reserves; if both inputs are zero the transaction reverts.【F:contracts/Pool.sol†L362-L364】
+4. For each non-zero input token the pool queries the factory for the current fee rate, siphons that portion to `PoolFees` via `_update0`/`_update1`, re-reads balances after the fee transfer, and ensures the constant-product (or stable-curve) invariant still holds.【F:contracts/Pool.sol†L367-L374】【F:contracts/Pool.sol†L153-L174】
+5. Finally `_update` records the new reserves and cumulative pricing data before emitting the `Swap` event that the Router listens for.【F:contracts/Pool.sol†L211-L377】
+
+```mermaid
+sequenceDiagram
+    participant Router as Router/User
+    participant Pool as Pool
+    participant Factory as IPoolFactory
+    participant Fees as PoolFees
+    participant Callee as IPoolCallee
+    Router->>Pool: swap(amount0Out, amount1Out, to, data)
+    Pool->>Factory: isPaused()
+    alt flash payout
+        Pool->>to: safeTransfer token0/token1
+        opt data callback
+            Pool->>Callee: hook(msg.sender, amount0Out, amount1Out, data)
+        end
+    end
+    Pool->>Pool: measure balances & compute amount0In/amount1In
+    alt fee on token0
+        Pool->>Factory: getFee(address(this), stable)
+        Pool->>Fees: _update0(fee portion)
+    end
+    alt fee on token1
+        Pool->>Factory: getFee(address(this), stable)
+        Pool->>Fees: _update1(fee portion)
+    end
+    Pool->>Pool: verify invariant via _k()
+    Pool->>Pool: _update(new balances)
+    Pool-->>Router: emit Swap(amount0In, amount1In, amount0Out, amount1Out)
+```
