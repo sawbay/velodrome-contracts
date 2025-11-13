@@ -73,7 +73,7 @@ sequenceDiagram
     Pool-->>Router: emit Swap(amount0In, amount1In, amount0Out, amount1Out)
 ```
 
-## Add Liquidity Flow
+# Router Add Liquidity Flow
 
 `Router.addLiquidity` and its ETH variant coordinate pool deployment (if needed), optimal amount selection, token transfers, and LP minting via the target pool.【F:contracts/Router.sol†L203-L240】
 
@@ -110,4 +110,32 @@ sequenceDiagram
     Router->>Pool: mint(to)
     Pool-->>Router: liquidity minted, emit Mint
     Router-->>User: return (amountA, amountB, liquidity)
+```
+
+## Pool Add Liquidity Flow
+
+`Pool.mint` finalizes a liquidity addition by measuring the just-deposited token deltas, minting LP tokens proportional to the contribution, synchronizing reserves, and emitting `Mint`.【F:contracts/Pool.sol†L295-L319】
+
+1. The Router (or direct caller) transfers tokens into the pool, then calls `mint(to)`, which snapshots current reserves and on-chain token balances to compute `_amount0/_amount1` as the freshly deposited amounts.【F:contracts/Pool.sol†L295-L302】
+2. On the first mint (`totalSupply == 0`) the pool locks `MINIMUM_LIQUIDITY` to `address(1)`, mints the remainder of `sqrt(amount0 * amount1) - MINIMUM_LIQUIDITY` to the depositor, and for stable pools enforces equalized normalized deposits plus a minimum invariant `k` threshold before allowing initialization.【F:contracts/Pool.sol†L303-L310】
+3. Subsequent mints pro-rate liquidity by taking the lesser of the two ratios against existing reserves, guaranteeing the pool stays balanced even if the caller overfunded one side.【F:contracts/Pool.sol†L311-L313】
+4. If the computed `liquidity` is below `MINIMUM_LIQUIDITY` the transaction reverts; otherwise the pool mints LP tokens to `to`, updates reserves via `_update`, and emits `Mint` with the actual deposited amounts so indexers can track liquidity additions.【F:contracts/Pool.sol†L314-L318】
+
+```mermaid
+sequenceDiagram
+    participant Router as Router/User
+    participant Pool as Pool
+    participant LPToken as LP Token
+    Router->>Pool: mint(to)
+    Pool->>Pool: read reserves & balances (derive _amount0/_amount1)
+    alt first liquidity
+        Pool->>LPToken: _mint(address(1), MINIMUM_LIQUIDITY)
+        Pool->>Router: require equalized stable deposits & min k
+        Pool->>LPToken: _mint(to, sqrt(amount0*amount1)-MINIMUM_LIQUIDITY)
+    else existing liquidity
+        Pool->>Pool: liquidity = min(Δ0/Res0, Δ1/Res1) * totalSupply
+        Pool->>LPToken: _mint(to, liquidity)
+    end
+    Pool->>Pool: _update(new balances)
+    Pool-->>Router: emit Mint(msg.sender, amount0, amount1)
 ```
