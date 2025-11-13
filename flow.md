@@ -139,3 +139,28 @@ sequenceDiagram
     Pool->>Pool: _update(new balances)
     Pool-->>Router: emit Mint(msg.sender, amount0, amount1)
 ```
+
+## Voter Emission Flow
+
+`Voter` ingests epoch VELO emissions from `Minter`, accrues each gauge’s share based on veNFT votes, and forwards the tokens to gauges so LP stakers can claim rewards over the epoch.【F:contracts/Voter.sol†L408-L512】
+
+1. Once per epoch the `Minter` calls `Voter.notifyRewardAmount`, transferring the freshly minted VELO and bumping the global `index` so future distributions know how much emission corresponds to one unit of vote weight.【F:contracts/Voter.sol†L125-L162】【F:contracts/Voter.sol†L408-L417】
+2. `_updateFor` runs (either lazily or during explicit `updateFor`/`distribute`) to compare each gauge’s previous `supplyIndex` against the new global `index`, crediting `claimable[gauge]` proportionally to the pool’s vote weight.【F:contracts/Voter.sol†L439-L457】
+3. `distribute` (batch or targeted) first nudges the `Minter` via `updatePeriod` to ensure the epoch’s emission is ready, then calls `_distribute` for each gauge, which zeroes `claimable`, approves the gauge, and invokes `IGauge.notifyRewardAmount` with the owed VELO.【F:contracts/Voter.sol†L486-L512】
+4. Gauges transfer the VELO in, compute a per-second reward rate for the rest of the epoch, and expose `earned`/`getReward` so LP depositors streaming their pool tokens through the gauge can withdraw VELO emissions pro-rata to their staked balance.【F:contracts/gauges/Gauge.sol†L195-L238】
+
+```mermaid
+sequenceDiagram
+    participant Minter
+    participant Voter
+    participant Gauge
+    participant LP as LP Staker
+    Minter->>Voter: notifyRewardAmount(emission)
+    Voter->>Voter: update global index & claimable per gauge
+    loop each voted gauge
+        Voter->>Gauge: notifyRewardAmount(claimable)
+        Gauge->>Gauge: set rewardRate & periodFinish
+    end
+    LP->>Gauge: stake LP tokens / claim rewards
+    Gauge-->>LP: stream VELO rewards
+```
