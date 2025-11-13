@@ -34,45 +34,6 @@ sequenceDiagram
     Pool-->>User: Final output tokens
 ```
 
-## Add Liquidity Flow
-
-`Router.addLiquidity` and its ETH variant coordinate pool deployment (if needed), optimal amount selection, token transfers, and LP minting via the target pool.【F:contracts/Router.sol†L203-L240】
-
-1. The caller triggers `addLiquidity`/`addLiquidityETH`, which runs the shared `_addLiquidity` helper after validating the deadline through the `ensure` modifier.【F:contracts/Router.sol†L203-L240】【F:contracts/Router.sol†L36-L43】
-2. `_addLiquidity` ensures desired inputs cover the minimums, lazily creates the pool through the factory when absent, and computes the optimal counterpart amount from existing reserves (or accepts the provided ratios when bootstrapping an empty pool).【F:contracts/Router.sol†L169-L200】
-3. With final amounts known, the Router resolves the pool address via `poolFor` and pulls the computed token quantities from the caller (wrapping ETH into WETH when necessary) so the pool contract holds both legs.【F:contracts/Router.sol†L214-L238】
-4. The Router invokes `IPool.mint` on the pool, which measures newly deposited balances, mints LP tokens proportionally (enforcing equalized stable deposits on first mint), locks the minimum liquidity, and updates reserves before emitting `Mint`.【F:contracts/Router.sol†L219-L238】【F:contracts/Pool.sol†L296-L318】
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Router
-    participant Factory as IPoolFactory
-    participant Pool as IPool
-    participant WETH as WETH
-    User->>Router: addLiquidity(tokenA, tokenB, stable, amounts, mins, to, deadline)
-    Router->>Router: ensure(deadline)
-    Router->>Router: _addLiquidity(desired, mins)
-    alt pool missing
-        Router->>Factory: createPool(tokenA, tokenB, stable)
-        Factory-->>Router: new pool
-    else pool exists
-        Router->>Factory: getPool(tokenA, tokenB, stable)
-        Factory-->>Router: pool
-    end
-    Router->>Router: quoteLiquidity(reserves)
-    Router->>Pool: transfer tokenA amount
-    alt ETH path
-        Router->>WETH: deposit{value: amountETH}
-        Router->>Pool: transfer WETH amount
-    else ERC20 path
-        Router->>Pool: transfer tokenB amount
-    end
-    Router->>Pool: mint(to)
-    Pool-->>Router: liquidity minted, emit Mint
-    Router-->>User: return (amountA, amountB, liquidity)
-```
-
 ## Pool Swap Flow
 
 `Pool.swap` settles a single hop for the Router by paying out requested tokens, collecting the caller’s input, skimming protocol fees, and synchronizing reserves for invariant enforcement.【F:contracts/Pool.sol†L344-L377】
@@ -110,4 +71,43 @@ sequenceDiagram
     Pool->>Pool: verify invariant via _k()
     Pool->>Pool: _update(new balances)
     Pool-->>Router: emit Swap(amount0In, amount1In, amount0Out, amount1Out)
+```
+
+## Add Liquidity Flow
+
+`Router.addLiquidity` and its ETH variant coordinate pool deployment (if needed), optimal amount selection, token transfers, and LP minting via the target pool.【F:contracts/Router.sol†L203-L240】
+
+1. The caller triggers `addLiquidity`/`addLiquidityETH`, which runs the shared `_addLiquidity` helper after validating the deadline through the `ensure` modifier.【F:contracts/Router.sol†L203-L240】【F:contracts/Router.sol†L36-L43】
+2. `_addLiquidity` ensures desired inputs cover the minimums, lazily creates the pool through the factory when absent, and computes the optimal counterpart amount from existing reserves (or accepts the provided ratios when bootstrapping an empty pool).【F:contracts/Router.sol†L169-L200】
+3. With final amounts known, the Router resolves the pool address via `poolFor` and pulls the computed token quantities from the caller (wrapping ETH into WETH when necessary) so the pool contract holds both legs.【F:contracts/Router.sol†L214-L238】
+4. The Router invokes `IPool.mint` on the pool, which measures newly deposited balances, mints LP tokens proportionally (enforcing equalized stable deposits on first mint), locks the minimum liquidity, and updates reserves before emitting `Mint`.【F:contracts/Router.sol†L219-L238】【F:contracts/Pool.sol†L296-L318】
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Router
+    participant Factory as IPoolFactory
+    participant Pool as IPool
+    participant WETH as WETH
+    User->>Router: addLiquidity(tokenA, tokenB, stable, amounts, mins, to, deadline)
+    Router->>Router: ensure(deadline)
+    Router->>Router: _addLiquidity(desired, mins)
+    alt pool missing
+        Router->>Factory: createPool(tokenA, tokenB, stable)
+        Factory-->>Router: new pool
+    else pool exists
+        Router->>Factory: getPool(tokenA, tokenB, stable)
+        Factory-->>Router: pool
+    end
+    Router->>Router: quoteLiquidity(reserves)
+    Router->>Pool: transfer tokenA amount
+    alt ETH path
+        Router->>WETH: deposit{value: amountETH}
+        Router->>Pool: transfer WETH amount
+    else ERC20 path
+        Router->>Pool: transfer tokenB amount
+    end
+    Router->>Pool: mint(to)
+    Pool-->>Router: liquidity minted, emit Mint
+    Router-->>User: return (amountA, amountB, liquidity)
 ```
