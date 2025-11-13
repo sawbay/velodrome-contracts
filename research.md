@@ -145,20 +145,6 @@ It distributes weekly rebases to eligible veNFTs and routes matured locks direct
 - `claimMany(uint256[] calldata _tokenIds)`: Batch claims rewards across multiple veNFTs.
 - `setMinter(address _minter)`: Updates the authorized minter address (minter-only).
 
-### `contracts/contracts/VeArtProxy.sol`
-It renders veNFT SVG metadata and provides deterministic art configuration helpers.
-- `tokenURI(uint256 _tokenId)`: Produces the base64-encoded metadata URI for a veNFT.
-- `lineArtPathsOnly(uint256 _tokenId)`: Returns only the SVG path commands for custom renderers.
-- `generateConfig(uint256 _tokenId)`: Derives drawing parameters from veNFT attributes and randomness.
-- `twoStripes(Config memory cfg, int256 l)`: Generates line coordinates for the "Two Stripes" motif.
-- `circles(Config memory cfg, int256 l)`: Generates line coordinates for the "Circles" motif.
-- `interlockingCircles(Config memory cfg, int256 l)`: Generates line coordinates for the "Interlocking Circles" motif.
-- `corners(Config memory cfg, int256 l)`: Generates line coordinates for the "Corners" motif.
-- `curves(Config memory cfg, int256 l)`: Generates line coordinates for the "Curves" motif.
-- `spiral(Config memory cfg, int256 l)`: Generates line coordinates for the "Spiral" motif.
-- `explosion(Config memory cfg, int256 l)`: Generates line coordinates for the "Explosion" motif.
-- `wormhole(Config memory cfg, int256 l)`: Generates line coordinates for the "Wormhole" motif.
-
 ## Protocol mechanics contracts
 
 ### `contracts/contracts/Voter.sol`
