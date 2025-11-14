@@ -164,3 +164,33 @@ sequenceDiagram
     LP->>Gauge: stake LP tokens / claim rewards
     Gauge-->>LP: stream VELO rewards
 ```
+
+## User Vote Flow
+
+`Voter.vote` lets a veNFT holder apportion their voting power across gauges each epoch so emissions flow toward preferred pools.【F:contracts/Voter.sol†L255-L272】
+
+1. During the vote window (after `epochVoteStart` and before the whitelisted-only tail via `epochVoteEnd`), the caller must be the veNFT owner or approved operator, provide matching pool/weight arrays under `maxVotingNum`, and satisfy `onlyNewEpoch`, preventing multiple votes per epoch.【F:contracts/Voter.sol†L102-L272】
+2. Voter reads the veNFT balance as total weight, then `_vote` normalizes the requested weights, reverting if any target lacks a live gauge or if the computed pool share rounds to zero.【F:contracts/Voter.sol†L215-L236】
+3. For every pool, `_vote` syncs gauge accounting via `_updateFor`, records the pool in `poolVote`, bumps `weights`/`votes`, deposits the veNFT’s share into the gauge fee/incentive trackers, and accumulates `usedWeight`/`totalWeight` before emitting `Voted`.【F:contracts/Voter.sol†L236-L252】
+4. When at least one pool receives weight, Voter flags the veNFT as “voting” inside `VotingEscrow`, blocking withdrawals until the user later resets; `usedWeights[_tokenId]` persists the allocation for pokes or incentives accounting.【F:contracts/Voter.sol†L249-L252】【F:contracts/VotingEscrow.sol†L1067-L1081】
+5. To change targets, the user can call `reset` (once the epoch rolls) which unwinds weights, withdraws from reward trackers, and clears `poolVote`, or call `poke` to reapply the existing pool list using the veNFT’s refreshed balance.【F:contracts/Voter.sol†L165-L214】
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Voter
+    participant Gauge
+    participant Rewards as Fee/Incentive Rewards
+    participant Escrow as VotingEscrow
+    User->>Voter: vote(tokenId, pools[], weights[])
+    Voter->>Voter: onlyNewEpoch + validate arrays/window
+    loop each selected pool
+        Voter->>Gauge: _updateFor(gauge)
+        Voter->>Rewards: _deposit(weight share, tokenId)
+        Voter->>Voter: update weights & poolVote
+    end
+    Voter->>Escrow: voting(tokenId, true)
+    User->>Voter: reset/poke (new epoch)
+    Voter->>Rewards: _withdraw(weights, tokenId)
+    Voter->>Escrow: voting(tokenId, false or refreshed)
+```
